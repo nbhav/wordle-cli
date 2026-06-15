@@ -14,30 +14,54 @@ from collections import Counter
 from enum import Enum
 import os
 import random
+from logging import Logger
+from dataclasses import dataclass
 
-# Reference: https://github.com/Kinkelin/WordleCompetition/tree/main/data/official
-# Words list from wordle offical
-# File path for all the valid words that will be shown to users
-WORDS_FILE_PATH="../../valid_words.txt"
 
-# File path so users can guess a large variety of words
-WORDS_GUESS_PATH="../../allowed_guess.txt"
-
+logger = Logger(__file__)
 
 # Enum class for
-class WordStatus(Enum):
-    DOES_NOT_EXIST = "Grey"
-    EXISTS = "Yellow"
-    MATCH = "Green"
+class LetterStatus(Enum):
+    DOES_NOT_EXIST = "absent"
+    EXISTS = "exists"
+    MATCH = "match"
 
+class GuessStatus(Enum):
+    OK = "ok"
+    INVALID_LENGTH = "invalid_length"
+    GUESS_ALREADY_MADE = "guess_already_made"
+    NOT_IN_WORD_LIST = "not_in_word_list"
+    GAME_OVER = "game_over"
+    GAME_WON = "game_won"
 
-class WordleCli:
+@dataclass
+class GuessResult:
+    outcome: GuessStatus
+    guess: list[dict]
 
-    def __init__ (self, words_file_path: str, words_guess_file_path: str, word_length: int = 5, total_guesses: int = 6):
+class WordleCliBase:
+
+    DEFAULT_WORD_LENGTH = 5
+    DEFUALT_TOTAL_GUESSES = 6
+
+    def __init__ (self, words_file_path: str, words_guess_file_path: str, word_length: int = DEFAULT_WORD_LENGTH, total_guesses: int = DEFUALT_TOTAL_GUESSES):
         # Word length and total guesses
+
         self.__word_length = word_length
-        self.__total_guesses = total_guesses
+
+        if word_length != self.DEFUALT_WORD_LENGTH:
+            # Overrding the default when its not = 6 so that the
+            # game can be reset, probably a better way but ok enough placeholder for now
+            self.DEFUALT_WORD_LENGTH = word_length
         
+        
+        self.total_guesses = total_guesses
+        
+        if total_guesses != self.DEFUALT_TOTAL_GUESSES:
+            # Overrding the default when its not = 6 so that the
+            # game can be reset, probably a better way but ok enough placeholder for now
+            self.DEFUALT_TOTAL_GUESSES = total_guesses
+
         # These should be set by __read_file
         self.__words_set = self.__read_file(words_file_path)
         self.__guess_set = self.__read_file(words_guess_file_path)
@@ -101,16 +125,16 @@ class WordleCli:
         
         for guess_letter, actual_letter in zip (guess_list, self.__chosen_word):
             if guess_letter[letter_key] == actual_letter:
-                guess_letter[match_status_key] = WordStatus.MATCH
+                guess_letter[match_status_key] = LetterStatus.MATCH
             elif  guess_letter[letter_key] in self.__chosen_word and union_diff[guess_letter[letter_key]] > 0:
-                guess_letter[match_status_key] = WordStatus.EXISTS
+                guess_letter[match_status_key] = LetterStatus.EXISTS
                 union_diff[letter_key] -= 1
             else:
-                guess_letter[match_status_key] = WordStatus.DOES_NOT_EXIST
+                guess_letter[match_status_key] = LetterStatus.DOES_NOT_EXIST
 
         return False
 
-    def __get_guess_from_user_guess_map(self, guess: str) -> dict:
+    def __get_guess_from_user_guess_map(self, guess: str) -> list [dict]:
         """
         gets the dictionary for a given guess, should be pre_genereated already
         """
@@ -122,57 +146,57 @@ class WordleCli:
         """
         self.__user_guess_map[guess] = [{"letter": letter, "match_status": None} for letter in guess]
 
+
+    def get_user_guess_map(self):
+        return self.__user_guess_map.copy()
     
     def print_guess_dict(self) -> None:
-        print("\nGuesses already made:\n")
+        logger.debug(msg="\nGuesses already made:\n")
         for k in self.__user_guess_map.keys():
-            print(f"Guess: {k}")
-            print(self.__user_guess_map[k])
+            logger.debug(f"Guess: {k}")
+            logger.debug(self.__user_guess_map[k])
 
 
-    def run_game(self) -> None:
-        try:
-            print(self.__chosen_word)
-            while( self.__total_guesses > 0 ):
-                user_guess = input(f"Guess a word?, Guess must be {self.__word_length} letters\n")
-                user_guess = user_guess.strip().lower()
-
-                # For future expansion to multiple word lengths 
-                if len(user_guess) != self.__word_length:
-                    print(f"Invalid guess made: {user_guess} incorrect num of characters")
-                    continue
-
-                # check to see if guess is a valid guess, the guess words will contain all the base words + extras
-                if user_guess not in self.__guess_set:
-                    print(f"Invalid word used to guess: {user_guess}")
-                    continue
-
-                if user_guess in self.__user_guess_map:
-                    print(f"Guess has already been made {user_guess}")
-                    continue
-                
-
-
-                # Add user guess to the guess set
-                self.__add_user_guess_to_guess_dict(user_guess)
-                self.__compare_word_to_guess(guess=user_guess)
-                self.print_guess_dict()
-                self.__total_guesses -= 1
-
-                if self.__total_guesses == 0:
-                    print(f"Sorry you have run out guesses the word was {self.__chosen_word}")
+    def submit_guess(self, user_guess: str) -> GuessResult:
         
-        except KeyboardInterrupt:
-            raise SystemExit(0, "Thank you for playing!!")
+        if user_guess is None:
+            return GuessResult(GuessStatus.INVALID_LENGTH, [])
+        
+        user_guess = user_guess.strip().lower()
+
+        if len(user_guess) != self.__word_length:
+            logger.debug(f"Invalid guess made: {user_guess} incorrect num of characters")
+            return GuessResult(GuessStatus.INVALID_LENGTH, [])
+
+        # check to see if guess is a valid guess, the guess words will contain all the base words + extras
+        if user_guess not in self.__guess_set:
+            logger.debug(f"Invalid word used to guess: {user_guess}")
+            return GuessResult(GuessStatus.NOT_IN_WORD_LIST, [])
+
+        if user_guess in self.__user_guess_map:
+            logger.debug(f"Guess has already been made {user_guess}")
+            return GuessResult(GuessStatus.GUESS_ALREADY_MADE, [])
 
 
+        # Add user guess to the guess set
+        self.__add_user_guess_to_guess_dict(user_guess)
+        self.__compare_word_to_guess(guess=user_guess)
+        self.print_guess_dict()
+        self.__total_guesses -= 1
 
-def main():
-    cli_game = WordleCli(words_file_path=WORDS_FILE_PATH, words_guess_file_path=WORDS_GUESS_PATH)
-    cli_game.run_game()
-
-if __name__ == "__main__":
-    main()
-
+        return GuessResult(GuessStatus.OK, self.__get_guess_from_user_guess_map(user_guess))
     
 
+    def reset_game(self):
+        logger.debug("Resetting the game")
+        self.total_guesses =  self.DEFUALT_TOTAL_GUESSES
+        # Reference: https://www.geeksforgeeks.org/python/select-random-element-from-set-in-python/
+        self.__chosen_word = random.choice(list(self.__words_set)) 
+
+        # Get freq count of all the letters in the word
+        self.__chosen_word_counter = Counter(self.__chosen_word)
+
+        # To be used during execution
+        self.__user_guess_invalid_letters_set = set()
+        self.__user_guess_valid_letters_set = set()
+        self.__user_guess_map = {}
