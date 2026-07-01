@@ -41,26 +41,12 @@ class GuessResult:
 
 class WordleCliBase:
 
-    DEFAULT_WORD_LENGTH = 5
-    DEFUALT_TOTAL_GUESSES = 6
-
-    def __init__ (self, words_file_path: str, words_guess_file_path: str, word_length: int = DEFAULT_WORD_LENGTH, total_guesses: int = DEFUALT_TOTAL_GUESSES):
+    def __init__ (self, words_file_path: str, words_guess_file_path: str, word_length: int = 5, total_guesses: int = 6):
         # Word length and total guesses
 
-        self.__word_length = word_length
-
-        if word_length != self.DEFUALT_WORD_LENGTH:
-            # Overrding the default when its not = 6 so that the
-            # game can be reset, probably a better way but ok enough placeholder for now
-            self.DEFUALT_WORD_LENGTH = word_length
-        
-        
+        self.__word_length = word_length        
+        self.__inputted_total_guesses = total_guesses # Saving orginial total guesses in case of reset state
         self.total_guesses = total_guesses
-        
-        if total_guesses != self.DEFUALT_TOTAL_GUESSES:
-            # Overrding the default when its not = 6 so that the
-            # game can be reset, probably a better way but ok enough placeholder for now
-            self.DEFUALT_TOTAL_GUESSES = total_guesses
 
         # These should be set by __read_file
         self.__words_set = self.__read_file(words_file_path)
@@ -189,7 +175,7 @@ class WordleCliBase:
 
     def reset_game(self):
         logger.debug("Resetting the game")
-        self.total_guesses =  self.DEFUALT_TOTAL_GUESSES
+        self.total_guesses =  self.__inputted_total_guesses
         # Reference: https://www.geeksforgeeks.org/python/select-random-element-from-set-in-python/
         self.__chosen_word = random.choice(list(self.__words_set)) 
 
