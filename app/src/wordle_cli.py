@@ -107,6 +107,7 @@ class WordleCliBase:
 
         valid_matches = Counter(guess_letter[letter_key] for guess_letter, actual_letter in zip (guess_list, self.__chosen_word) if guess_letter[letter_key] == actual_letter)
 
+        # we need to capture how many letters are left over 
         union_diff = actual_letter_counter - valid_matches
         
         for guess_letter, actual_letter in zip (guess_list, self.__chosen_word):
@@ -114,7 +115,7 @@ class WordleCliBase:
                 guess_letter[match_status_key] = LetterStatus.MATCH
             elif  guess_letter[letter_key] in self.__chosen_word and union_diff[guess_letter[letter_key]] > 0:
                 guess_letter[match_status_key] = LetterStatus.EXISTS
-                union_diff[letter_key] -= 1
+                union_diff[guess_letter[letter_key]] -= 1
             else:
                 guess_letter[match_status_key] = LetterStatus.DOES_NOT_EXIST
 
@@ -168,7 +169,7 @@ class WordleCliBase:
         self.__add_user_guess_to_guess_dict(user_guess)
         self.__compare_word_to_guess(guess=user_guess)
         self.print_guess_dict()
-        self.__total_guesses -= 1
+        self.total_guesses -= 1
 
         return GuessResult(GuessStatus.OK, self.__get_guess_from_user_guess_map(user_guess))
     
