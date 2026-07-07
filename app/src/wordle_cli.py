@@ -92,10 +92,8 @@ class WordleCliBase:
 
 
     def __compare_word_to_guess(self, guess: str) -> bool:
-
-        if guess == self.__chosen_word:
-            return True
-
+        """Score every letter of the guess and return whether it fully matches
+        the chosen word."""
         guess_list = self.__get_guess_from_user_guess_map(guess=guess)
 
         # make a copy of the freq map, since if count of letter in guess > count of letter in actual
@@ -119,7 +117,7 @@ class WordleCliBase:
             else:
                 guess_letter[match_status_key] = LetterStatus.DOES_NOT_EXIST
 
-        return False
+        return guess == self.__chosen_word
 
     def __get_guess_from_user_guess_map(self, guess: str) -> list [dict]:
         """
@@ -167,12 +165,22 @@ class WordleCliBase:
 
         # Add user guess to the guess set
         self.__add_user_guess_to_guess_dict(user_guess)
-        self.__compare_word_to_guess(guess=user_guess)
+        is_win = self.__compare_word_to_guess(guess=user_guess)
         self.print_guess_dict()
         self.total_guesses -= 1
 
-        return GuessResult(GuessStatus.OK, self.__get_guess_from_user_guess_map(user_guess))
-    
+        guess_list = self.__get_guess_from_user_guess_map(user_guess)
+        if is_win:
+            return GuessResult(GuessStatus.GAME_WON, guess_list)
+        if self.total_guesses <= 0:
+            return GuessResult(GuessStatus.GAME_OVER, guess_list)
+        return GuessResult(GuessStatus.OK, guess_list)
+
+    @property
+    def answer(self) -> str:
+        """The current target word (used to reveal it when the game is lost)."""
+        return self.__chosen_word
+
 
     def reset_game(self):
         logger.debug("Resetting the game")
