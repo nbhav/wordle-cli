@@ -44,6 +44,17 @@ class WelcomeScreen(Screen):
 class GameScreen(Screen):
     BINDINGS = [("ctrl+r", "restart", "Restart"), ("ctrl+c", "quit", "Quit")]
 
+    # Terminal cells are ~2:1 (tall:wide), so a square-looking tile needs
+    # width == height * 2. Tiles are sized to the terminal each resize.
+    CELL_ASPECT = 2
+    MIN_CELL_H = 3
+    MAX_CELL_H = 8
+    # Rows used by everything but the board: header (~4) + input (~4) +
+    # keyboard (~16) + footer (1), plus a little headroom so tall terminals
+    # never overshoot into a scrollbar. The board gets the rest, so tiles grow
+    # as the terminal gets taller while the keyboard stays fully visible.
+    VERTICAL_CHROME = 26
+
     def __init__(self):
         super().__init__()
         self._current_letters = []
@@ -53,28 +64,29 @@ class GameScreen(Screen):
         self._game_over = False
 
     def compose(self) -> ComposeResult:
-        with Horizontal(id="header-bar"):
-            yield Static("WordleCli", id="game-header")
+        # One container holds the whole game so everything sizes relative to it
+        # (and thus to the terminal) via the fractional units in the CSS.
+        with Vertical(id="game"):
+            with Horizontal(id="header-bar"):
+                yield Static("WordleCli", id="game-header")
 
-        with Vertical(id="guess_screen"):
-            for row_idx in range(self._total_rows):
-                with Horizontal(classes="guess-row"):
-                    for col_idx in range(WORD_LENGTH):
-                        yield Static("", id=f"cell-{row_idx}-{col_idx}", classes="cell")
+            with Vertical(id="guess_screen"):
+                for row_idx in range(self._total_rows):
+                    with Horizontal(classes="guess-row"):
+                        for col_idx in range(WORD_LENGTH):
+                            yield Static("", id=f"cell-{row_idx}-{col_idx}", classes="cell")
 
-        with Horizontal(id="input-bar"):
-            yield Static("", id="current-word")
+            with Horizontal(id="input-bar"):
+                yield Static("", id="current-word")
 
+            with Vertical(id="keyboard"):
+                for row in KEYBOARD_ROWS:
+                    with Horizontal(classes="key-row"):
+                        for key in row:
+                            btn_id = "key-backspace" if key == "⌫" else f"key-{key}"
+                            wide = key in ("ENTER", "⌫")
+                            yield Button(key, id=btn_id, classes="key wide" if wide else "key")
 
-        with Vertical(id="keyboard"):
-            for row in KEYBOARD_ROWS:
-                with Horizontal(classes="key-row"):
-                    for key in row:
-                        btn_id = "key-backspace" if key == "⌫" else f"key-{key}"
-                        wide = key in ("ENTER", "⌫")
-                        yield Button(key, id=btn_id, classes="key wide" if wide else "key")
-
-   
         yield Footer()
 
     def on_mount(self) -> None:
@@ -84,38 +96,43 @@ class GameScreen(Screen):
         # Compose auto-focuses the first button (Q) before can_focus is cleared,
         # leaving a stray focus ring on it; drop focus so the screen owns keys.
         self.set_focus(None)
-        self._resize_keyboard()
-        self.call_after_refresh(self._sync_column_widths)
+        self._resize_board()
 
     def on_resize(self, event) -> None:
-        self._resize_keyboard()
-        self._sync_column_widths()
+        self._resize_board()
 
-    def _sync_column_widths(self) -> None:
-        """Header and input bar mirror the fixed guess-box width so the whole
-        center column lines up, whatever the cell size works out to."""
-        rows = self.query(".guess-row")
-        if not rows:
-            return
-        grid_width = rows.first().region.width
-        if grid_width <= 0:
-            return
-        self.query_one("#game-header").styles.width = grid_width
-        self.query_one("#current-word").styles.width = grid_width
+    def _resize_board(self) -> None:
+        """Size the tiles to the terminal, keeping them square, limited by
+        whichever axis is tighter (leftover height, or width across the columns).
+        The keyboard keys track the tile width so the board and keyboard scale
+        together."""
+        cols, rows = WORD_LENGTH, self._total_rows
 
-    def _resize_keyboard(self) -> None:
-        """Pick one uniform key width that fits the terminal, so keys grow to
-        fill wide terminals and shrink (without overflowing) on narrow ones."""
-        available = self.size.width - 2  # small breathing room at the edges
-        key_width = 3  # floor for readability
-        # Widest rows: QWERTYUIOP (10 keys) and ENTER + 7 + ⌫ (wide keys = key+3).
-        # Row span with 1-col gaps: top = 10*k + 9, bottom = 9*k + 14.
-        for candidate in range(8, 3, -1):
-            if max(10 * candidate + 9, 9 * candidate + 14) <= available:
-                key_width = candidate
-                break
+        # Tallest a tile can be given the vertical space left for the board.
+        board_height = self.size.height - self.VERTICAL_CHROME
+        h_from_height = board_height // rows - 1  # minus per-row margin
+
+        # Tallest a tile can be given the horizontal space, kept square.
+        board_width = self.size.width - 4
+        h_from_width = (board_width // cols - 2) // self.CELL_ASPECT
+
+        cell_h = max(self.MIN_CELL_H, min(h_from_height, h_from_width, self.MAX_CELL_H))
+        cell_w = cell_h * self.CELL_ASPECT
+        for cell in self.query(".cell"):
+            cell.styles.width = cell_w
+            cell.styles.height = cell_h
+
+        # Header and input bar span the board width so they read as one column.
+        board_w = cols * cell_w + cols + 1  # tiles + collapsed 1-col margins
+        self.query_one("#game-header").styles.width = board_w
+        self.query_one("#current-word").styles.width = board_w
+
+        # Keys scale with the tile (a bit under a tile wide) so the keyboard
+        # stays proportional to the board and the keys aren't thin slivers.
+        key_w = max(4, cell_w * 2 // 3)
         for button in self.query(".key"):
-            button.styles.min_width = key_width + 3 if button.has_class("wide") else key_width
+            # Wide keys (ENTER / backspace) need room for the "ENTER" label.
+            button.styles.width = key_w + 3 if button.has_class("wide") else key_w
 
     def action_restart(self) -> None:
         self._game.reset_game()
@@ -236,13 +253,8 @@ class WordleCli(App):
 
     CSS = """
     Screen {
-        /* Anchor to the top so, when the terminal is too short, the header and
-           grid stay visible and only the (decorative) keyboard scrolls off the
-           bottom -- centering would instead clip the top of the board. */
         align: center top;
     }
-    /* The board (GameScreen) top-anchors, but the welcome screen has little
-       content, so center it fully. */
     WelcomeScreen {
         align: center middle;
     }
@@ -252,10 +264,78 @@ class WordleCli(App):
         width: auto;
         height: auto;
     }
+
+    /* The whole game is one relative block: it fills the terminal (up to a max
+       width so tiles don't stretch absurdly on very wide screens) and centers.
+       Its children divide that space with fractional units, so the board and
+       keyboard resize together with the terminal. */
+    #game {
+        width: 100%;
+        height: auto;
+        align: center middle;
+    }
+
+    #header-bar {
+        width: 100%;
+        height: auto;
+        align: center middle;
+    }
+    #game-header {
+        width: auto;
+        height: auto;
+        border: round $accent;
+        padding: 0 2;
+        margin: 0 0 1 0;
+        content-align: center middle;
+        text-align: center;
+        text-style: bold;
+    }
+
+    /* The board is content-sized; tile dimensions are set each resize by
+       _resize_board (kept square). These are just the initial values. */
+    #guess_screen {
+        width: 100%;
+        height: auto;
+        align: center middle;
+    }
+    .guess-row {
+        width: 100%;
+        height: auto;
+        align: center middle;
+        margin-bottom: 1;
+    }
+    .cell {
+        width: 6;
+        height: 3;
+        border: heavy $accent;
+        content-align: center middle;
+        text-align: center;
+        margin: 0 1;
+    }
+
+    #input-bar {
+        width: 100%;
+        height: auto;
+        align: center middle;
+    }
+    #current-word {
+        height: 3;
+        width: auto;
+        min-width: 16;
+        border: solid $accent;
+        content-align: center middle;
+        text-align: center;
+        padding: 0 1;
+        margin: 1 0 0 0;
+    }
+
+    /* Readable keyboard. Key width is set by _resize_board so the keyboard
+       spans about the board width; height stays fixed and legible. */
     #keyboard {
         width: 100%;
         height: auto;
         align: center middle;
+        margin-top: 1;
     }
     .key-row {
         width: 100%;
@@ -263,15 +343,17 @@ class WordleCli(App):
         align: center middle;
     }
     .key {
-        min-width: 4;
+        width: 5;
+        min-width: 3;
         height: 3;
         margin: 1 1;
-        background: #565a63;   /* unused: still available */
+        background: #565a63;
         color: white;
     }
     .wide {
-        min-width: 7;
+        width: 8;
     }
+
     .match {
         background: #538d4e;   /* in the word, correct spot */
         color: white;
@@ -294,56 +376,6 @@ class WordleCli(App):
     }
     .cell.absent {
         border: heavy #3a3a3c;
-    }
-    #current-word {
-        height: 3;
-        width: auto;
-        min-width: 10;
-        border: solid $accent;
-        content-align: center middle;
-        text-align: center;
-        padding: 0 1;
-        margin: 1 0 0 0;
-    }
-    #header-bar {
-        width: 100%;
-        height: auto;
-        align: center middle;
-    }
-    #game-header {
-        width: 50%;
-        min-width: 20;
-        height: auto;
-        border: round $accent;
-        padding: 0 2;
-        margin: 0 0 1 0;
-        content-align: center middle;
-        text-align: center;
-        text-style: bold;
-    }
-    #guess_screen {
-        width: 100%;
-        height: auto;
-        align: center middle;
-    }
-    #input-bar {
-        width: 100%;
-        height: auto;
-        align: center middle;
-    }
-    .guess-row {
-        width: auto;
-        height: auto;
-        align: center middle;
-        margin-bottom: 1;
-    }
-    .cell {
-        width: 6;
-        height: 3;
-        border: heavy $accent;
-        content-align: center middle;
-        text-align: center;
-        margin: 0 1;
     }
     """
 
