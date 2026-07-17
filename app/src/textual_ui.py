@@ -58,7 +58,7 @@ class GameScreen(Screen):
     def __init__(self):
         super().__init__()
         self._current_letters = []
-        self._game = WordleCliBase(words_file_path=WORDS_FILE_PATH, words_guess_file_path=WORDS_GUESS_PATH)
+        self._game = WordleCliBase(words_file_path=WORDS_FILE_PATH, words_guess_file_path=WORDS_GUESS_PATH, word_length=WORD_LENGTH)
         self._total_rows = self._game.total_guesses
         self._current_row = 0
         self._game_over = False
@@ -140,7 +140,8 @@ class GameScreen(Screen):
         self._current_row = 0
         self._game_over = False
         self.query_one("#current-word", Static).update("")
-        for cell in self.query(".cell"):
+
+        for cell in self.query(".cell").results(Static):
             cell.update("")
             cell.remove_class("match")
             cell.remove_class("present")

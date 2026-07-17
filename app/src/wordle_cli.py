@@ -14,11 +14,12 @@ from collections import Counter
 from enum import Enum
 import os
 import random
+from pathlib import Path
 from logging import Logger
 from dataclasses import dataclass
 
 
-logger = Logger(__file__)
+logger = Logger(__name__)
 
 # Enum class for
 class LetterStatus(Enum):
@@ -62,8 +63,6 @@ class WordleCliBase:
         self.__chosen_word_counter = Counter(self.__chosen_word)
 
         # To be used during execution
-        self.__user_guess_invalid_letters_set = set()
-        self.__user_guess_valid_letters_set = set()
         self.__user_guess_map = {}
 
     def __read_file(self, file_path) -> set[str]:
@@ -71,9 +70,15 @@ class WordleCliBase:
             Reads words from the words file and adds it to member attr of
             the class
         """
+
+
+
         words_set = set()
         if file_path is None:
             raise ValueError(f"None used for file_path {file_path}")
+        
+
+        file_path = Path(__file__).resolve().parent.joinpath(file_path)
         
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
@@ -192,6 +197,4 @@ class WordleCliBase:
         self.__chosen_word_counter = Counter(self.__chosen_word)
 
         # To be used during execution
-        self.__user_guess_invalid_letters_set = set()
-        self.__user_guess_valid_letters_set = set()
         self.__user_guess_map = {}
