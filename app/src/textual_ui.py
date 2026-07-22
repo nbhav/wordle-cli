@@ -2,9 +2,11 @@
 Ui for the Wordle cli app
 """
 # Python Imports
+from enum import StrEnum
+
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.screen import Screen
+from textual.screen import Screen, ModalScreen
 from textual.widgets import Button, Footer, Static
 
 # Custom Imports
@@ -27,14 +29,45 @@ WORDS_FILE_PATH="data/valid_words.txt"
 # File path so users can guess a large variety of words
 WORDS_GUESS_PATH="data/allowed_guess.txt"
 
+# Selector tokens are split by role so each kind has one home. Widget *type*
+# selectors (Screen, GameScreen, ...) live only in wordle.tcss as literals —
+# they're class names, and Textual has no way to inject Python values into CSS,
+# so these two enums are the single source of truth for the *Python* side only
+# (query_one / add_class / id= / classes=). The .tcss mirrors the same strings.
+class DomId(StrEnum):
+    """Widget ids — used as ``#id`` selectors and in ``query_one`` / ``id=``."""
+    WELCOME_TEXT = "welcome-text"
+    GAME_OVER_DIALOG = "game-over-dialog"
+    GAME_OVER_TITLE = "game-over-title"
+    GAME_OVER_MESSAGE = "game-over-message"
+    GAME_OVER_BUTTONS = "game-over-buttons"
+    GAME = "game"
+    HEADER_BAR = "header-bar"
+    GAME_HEADER = "game-header"
+    GUESS_SCREEN = "guess_screen"
+    INPUT_BAR = "input-bar"
+    CURRENT_WORD = "current-word"
+    KEYBOARD = "keyboard"
+    PLAY_AGAIN = "play-again"
+    QUIT_GAME = "quit-game"
 
 
+class CssClass(StrEnum):
+    """Style classes — used as ``.class`` selectors and in ``add_class`` etc."""
+    GUESS_ROW = "guess-row"
+    KEY_ROW = "key-row"
+    KEY = "key"
+    WIDE = "wide"
+    CELL = "cell"
+    MATCH = "match"
+    PRESENT = "present"
+    ABSENT = "absent"
 
 class WelcomeScreen(Screen):
     BINDINGS = [("enter", "start_game", "Start")]
 
     def compose(self) -> ComposeResult:
-        yield Static("Welcome to Wordle CLI\n\nHit Enter to start", id="welcome-text")
+        yield Static("Welcome to Wordle CLI\n\nHit Enter to start", id=DomId.WELCOME_TEXT)
         yield Footer()
 
     def action_start_game(self) -> None:
@@ -55,6 +88,12 @@ class GameScreen(Screen):
     # as the terminal gets taller while the keyboard stays fully visible.
     VERTICAL_CHROME = 26
 
+    _STATUS_CLASS = {
+        LetterStatus.MATCH: CssClass.MATCH,
+        LetterStatus.EXISTS: CssClass.PRESENT,
+        LetterStatus.DOES_NOT_EXIST: CssClass.ABSENT,
+    }
+
     def __init__(self):
         super().__init__()
         self._current_letters = []
@@ -66,26 +105,27 @@ class GameScreen(Screen):
     def compose(self) -> ComposeResult:
         # One container holds the whole game so everything sizes relative to it
         # (and thus to the terminal) via the fractional units in the CSS.
-        with Vertical(id="game"):
-            with Horizontal(id="header-bar"):
-                yield Static("WordleCli", id="game-header")
+        with Vertical(id=DomId.GAME):
+            with Horizontal(id=DomId.HEADER_BAR):
+                yield Static("WordleCli", id=DomId.GAME_HEADER)
 
-            with Vertical(id="guess_screen"):
+            with Vertical(id=DomId.GUESS_SCREEN):
                 for row_idx in range(self._total_rows):
-                    with Horizontal(classes="guess-row"):
+                    with Horizontal(classes=CssClass.GUESS_ROW):
                         for col_idx in range(WORD_LENGTH):
-                            yield Static("", id=f"cell-{row_idx}-{col_idx}", classes="cell")
+                            yield Static("", id=f"cell-{row_idx}-{col_idx}", classes=CssClass.CELL)
 
-            with Horizontal(id="input-bar"):
-                yield Static("", id="current-word")
+            with Horizontal(id=DomId.INPUT_BAR):
+                yield Static("", id=DomId.CURRENT_WORD)
 
-            with Vertical(id="keyboard"):
+            with Vertical(id=DomId.KEYBOARD):
                 for row in KEYBOARD_ROWS:
-                    with Horizontal(classes="key-row"):
+                    with Horizontal(classes=CssClass.KEY_ROW):
                         for key in row:
                             btn_id = "key-backspace" if key == "⌫" else f"key-{key}"
                             wide = key in ("ENTER", "⌫")
-                            yield Button(key, id=btn_id, classes="key wide" if wide else "key")
+                            classes = f"{CssClass.KEY} {CssClass.WIDE}" if wide else CssClass.KEY
+                            yield Button(key, id=btn_id, classes=classes)
 
         yield Footer()
 
@@ -118,19 +158,19 @@ class GameScreen(Screen):
 
         cell_h = max(self.MIN_CELL_H, min(h_from_height, h_from_width, self.MAX_CELL_H))
         cell_w = cell_h * self.CELL_ASPECT
-        for cell in self.query(".cell"):
+        for cell in self.query(f".{CssClass.CELL}"):
             cell.styles.width = cell_w
             cell.styles.height = cell_h
 
         # Header and input bar span the board width so they read as one column.
         board_w = cols * cell_w + cols + 1  # tiles + collapsed 1-col margins
-        self.query_one("#game-header").styles.width = board_w
-        self.query_one("#current-word").styles.width = board_w
+        self.query_one(f"#{DomId.GAME_HEADER}").styles.width = board_w
+        self.query_one(f"#{DomId.CURRENT_WORD}").styles.width = board_w
 
         # Keys scale with the tile (a bit under a tile wide) so the keyboard
         # stays proportional to the board and the keys aren't thin slivers.
         key_w = max(4, cell_w * 2 // 3)
-        for button in self.query(".key"):
+        for button in self.query(f".{CssClass.KEY}"):
             # Wide keys (ENTER / backspace) need room for the "ENTER" label.
             button.styles.width = key_w + 3 if button.has_class("wide") else key_w
 
@@ -139,17 +179,17 @@ class GameScreen(Screen):
         self._current_letters = []
         self._current_row = 0
         self._game_over = False
-        self.query_one("#current-word", Static).update("")
+        self.query_one(f"#{DomId.CURRENT_WORD}", Static).update("")
 
-        for cell in self.query(".cell").results(Static):
+        for cell in self.query(f".{CssClass.CELL}").results(Static):
             cell.update("")
-            cell.remove_class("match")
-            cell.remove_class("present")
-            cell.remove_class("absent")
+            cell.remove_class(CssClass.MATCH)
+            cell.remove_class(CssClass.PRESENT)
+            cell.remove_class(CssClass.ABSENT)
         for button in self.query(Button):
-            button.remove_class("match")
-            button.remove_class("present")
-            button.remove_class("absent")
+            button.remove_class(CssClass.MATCH)
+            button.remove_class(CssClass.PRESENT)
+            button.remove_class(CssClass.ABSENT)
 
     def _process_input(self, key: str) -> None:
         """key is 'ENTER', 'BACKSPACE', or a single uppercase letter."""
@@ -163,7 +203,7 @@ class GameScreen(Screen):
                 self._current_letters.pop()
         elif len(key) == 1 and key.isalpha() and len(self._current_letters) < WORD_LENGTH:
             self._current_letters.append(key.lower())
-        self.query_one("#current-word", Static).update("".join(self._current_letters).upper())
+        self.query_one(f"#{DomId.CURRENT_WORD}", Static).update("".join(self._current_letters).upper())
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         label = str(event.button.label)
@@ -181,12 +221,6 @@ class GameScreen(Screen):
         else:
             return
         self.query_one(button_id, Button).press()
-
-    _STATUS_CLASS = {
-        LetterStatus.MATCH: "match",
-        LetterStatus.EXISTS: "present",
-        LetterStatus.DOES_NOT_EXIST: "absent",
-    }
 
     def _submit_guess(self) -> None:
         if len(self._current_letters) < WORD_LENGTH:
@@ -214,19 +248,35 @@ class GameScreen(Screen):
         self._render_guess(result.guess)
         self._current_letters = []
         self._current_row += 1
-        self.query_one("#current-word", Static).update("")
+        self.query_one(f"#{DomId.CURRENT_WORD}", Static).update("")
 
         if result.outcome == GuessStatus.GAME_WON:
             self._game_over = True
-            self.notify("You solved it!", title="You win \U0001F389", severity="information", timeout=6)
+            self._show_game_over(won=True)
         elif result.outcome == GuessStatus.GAME_OVER:
             self._game_over = True
-            self.notify(
-                f"Out of guesses - the word was {self._game.answer.upper()}",
-                title="Game over",
-                severity="error",
-                timeout=6,
-            )
+            self._show_game_over(won=False)
+
+    def _show_game_over(self, won: bool) -> None:
+        """Overlay the end-of-game dialog on top of the final board."""
+        self.app.push_screen(
+            GameOverScreen(
+                won=won,
+                answer=self._game.answer,
+                guesses_used=self._current_row,  # already advanced past the last guess
+                total_guesses=self._total_rows,
+            ),
+            self._on_game_over_result,
+        )
+
+    def _on_game_over_result(self, play_again: bool | None) -> None:
+        if play_again:
+            # Reuse the existing restart path (clears board, keyboard, state) and
+            # hand keys back to the screen so the next round types normally.
+            self.action_restart()
+            self.set_focus(None)
+        else:
+            self.app.exit()
 
     def _render_guess(self, guess: list[dict]) -> None:
         """Fill the current row's cells with the guessed letters and colour each
@@ -242,146 +292,71 @@ class GameScreen(Screen):
     def update_key_status(self, letter: str, status: LetterStatus) -> None:
         button = self.query_one(f"#key-{letter.upper()}", Button)
         if status == LetterStatus.MATCH:
-            button.set_classes("key match")
-        elif status == LetterStatus.EXISTS and not button.has_class("match"):
-            button.set_classes("key present")
-        elif status == LetterStatus.DOES_NOT_EXIST and not button.has_class("match") and not button.has_class("present"):
-            button.set_classes("key absent")
+            button.set_classes(f"{CssClass.KEY} {CssClass.MATCH}")
+        elif status == LetterStatus.EXISTS and not button.has_class(CssClass.MATCH):
+            button.set_classes(f"{CssClass.KEY} {CssClass.PRESENT}")
+        elif status == LetterStatus.DOES_NOT_EXIST and not button.has_class(CssClass.MATCH) and not button.has_class(CssClass.PRESENT):
+            button.set_classes(f"{CssClass.KEY} {CssClass.ABSENT}")
+
+
+class GameOverScreen(ModalScreen[bool]):
+    """End-of-game overlay. Dismisses True to play again, False to quit."""
+
+    BINDINGS = [("escape", "quit", "Quit")]
+
+    def __init__(self, won: bool, answer: str, guesses_used: int, total_guesses: int):
+        super().__init__()
+        self._won = won
+        self._answer = answer
+        self._guesses_used = guesses_used
+        self._total_guesses = total_guesses
+
+    def compose(self) -> ComposeResult:
+        answer_line = f"The word was {self._answer.upper()}"
+        if self._won:
+            title = "You win \U0001F389"
+            message = f"Solved in {self._guesses_used}/{self._total_guesses}\n{answer_line}"
+        else:
+            title = "Game over"
+            message = answer_line
+
+        with Vertical(id=DomId.GAME_OVER_DIALOG):
+            yield Static(title, id=DomId.GAME_OVER_TITLE)
+            yield Static(message, id=DomId.GAME_OVER_MESSAGE)
+            with Horizontal(id=DomId.GAME_OVER_BUTTONS):
+                yield Button("Play again", id=DomId.PLAY_AGAIN, variant="success")
+                yield Button("Quit", id=DomId.QUIT_GAME, variant="error")
+
+    def on_mount(self) -> None:
+        # Affirmative default: a stray Enter (e.g. left over from the winning
+        # guess) plays again rather than quitting the app.
+        self.query_one(f"#{DomId.PLAY_AGAIN}", Button).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id == DomId.PLAY_AGAIN)
+
+    def action_quit(self) -> None:
+        self.dismiss(False)
 
 
 class WordleCli(App):
     BINDINGS = [("ctrl+r", "restart", "Restart"), ("ctrl+c", "quit", "Quit")]
 
-    CSS = """
-    Screen {
-        align: center top;
-    }
-    WelcomeScreen {
-        align: center middle;
-    }
-    #welcome-text {
-        content-align: center middle;
-        text-align: center;
-        width: auto;
-        height: auto;
-    }
-
-    /* The whole game is one relative block: it fills the terminal (up to a max
-       width so tiles don't stretch absurdly on very wide screens) and centers.
-       Its children divide that space with fractional units, so the board and
-       keyboard resize together with the terminal. */
-    #game {
-        width: 100%;
-        height: auto;
-        align: center middle;
-    }
-
-    #header-bar {
-        width: 100%;
-        height: auto;
-        align: center middle;
-    }
-    #game-header {
-        width: auto;
-        height: auto;
-        border: round $accent;
-        padding: 0 2;
-        margin: 0 0 1 0;
-        content-align: center middle;
-        text-align: center;
-        text-style: bold;
-    }
-
-    /* The board is content-sized; tile dimensions are set each resize by
-       _resize_board (kept square). These are just the initial values. */
-    #guess_screen {
-        width: 100%;
-        height: auto;
-        align: center middle;
-    }
-    .guess-row {
-        width: 100%;
-        height: auto;
-        align: center middle;
-        margin-bottom: 1;
-    }
-    .cell {
-        width: 6;
-        height: 3;
-        border: heavy $accent;
-        content-align: center middle;
-        text-align: center;
-        margin: 0 1;
-    }
-
-    #input-bar {
-        width: 100%;
-        height: auto;
-        align: center middle;
-    }
-    #current-word {
-        height: 3;
-        width: auto;
-        min-width: 16;
-        border: solid $accent;
-        content-align: center middle;
-        text-align: center;
-        padding: 0 1;
-        margin: 1 0 0 0;
-    }
-
-    /* Readable keyboard. Key width is set by _resize_board so the keyboard
-       spans about the board width; height stays fixed and legible. */
-    #keyboard {
-        width: 100%;
-        height: auto;
-        align: center middle;
-        margin-top: 1;
-    }
-    .key-row {
-        width: 100%;
-        height: auto;
-        align: center middle;
-    }
-    .key {
-        width: 5;
-        min-width: 3;
-        height: 3;
-        margin: 1 1;
-        background: #565a63;
-        color: white;
-    }
-    .wide {
-        width: 8;
-    }
-
-    .match {
-        background: #538d4e;   /* in the word, correct spot */
-        color: white;
-    }
-    .present {
-        background: #b59f3b;   /* in the word, wrong spot */
-        color: white;
-    }
-    .absent {
-        background: #3a3a3c;   /* used, not in the word */
-        color: #8a8d94;
-    }
-    /* On a scored cell, match the border to the fill so the tile reads as one
-       solid block instead of the fill bleeding around the accent border. */
-    .cell.match {
-        border: heavy #538d4e;
-    }
-    .cell.present {
-        border: heavy #b59f3b;
-    }
-    .cell.absent {
-        border: heavy #3a3a3c;
-    }
-    """
+    # CSS lives in a sibling .tcss so it gets real CSS tooling (highlighting,
+    # `textual run --dev` hot reload) with no brace-escaping. Textual resolves
+    # the path against this module's directory.
+    CSS_PATH = "wordle.tcss"
 
     def action_quit(self) -> None:
         self.exit()
+
+    def action_restart(self) -> None:
+        """Start a fresh game (new word, clean board) from any screen.
+
+        While playing, GameScreen's own ctrl+r binding takes priority and
+        resets in place; this backs the app-wide binding so ctrl+r also works
+        from the welcome screen."""
+        self.switch_screen(GameScreen())
 
     def on_mount(self) -> None:
         self.theme = "atom-one-dark"
