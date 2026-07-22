@@ -14,12 +14,12 @@ from collections import Counter
 from enum import Enum
 import os
 import random
+import logging
 from pathlib import Path
-from logging import Logger
 from dataclasses import dataclass
 
 
-logger = Logger(__name__)
+logger = logging.getLogger(__name__)
 
 # Enum class for
 class LetterStatus(Enum):
@@ -152,6 +152,11 @@ class WordleCliBase:
         if user_guess is None:
             return GuessResult(GuessStatus.INVALID_LENGTH, [])
         
+        # Game is already finished; don't score further guesses or let
+        # total_guesses run negative.
+        if self.total_guesses <= 0:
+            return GuessResult(GuessStatus.GAME_OVER, [])
+
         user_guess = user_guess.strip().lower()
 
         if len(user_guess) != self.__word_length:

@@ -4,8 +4,6 @@ version = "0.1.0"
 description = "CLI Wordle game"
 requires-python = ">=3.12"
 dependencies = [
-    "nltk>=3.9.4",
-    "wordfreq>=3.1.1",
     "textual>=0.86.0",
 ]
 
@@ -22,4 +20,4 @@ build-backend = "hatchling.build"
 packages = ["app/src"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["app/tests"]

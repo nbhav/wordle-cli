@@ -1,0 +1,190 @@
+Screen {
+    align: center top;
+}
+
+/* The board is anchored at the top and the full game is taller than short
+   terminals; clip the overflow (the keyboard's bottom rows fall off) instead
+   of letting the whole game scroll. */
+GameScreen {
+    overflow-y: hidden;
+}
+
+WelcomeScreen {
+    align: center middle;
+}
+
+#welcome-text {
+    content-align: center middle;
+    text-align: center;
+    width: auto;
+    height: auto;
+}
+
+/* End-of-game overlay: dim the final board and center a dialog on top. */
+GameOverScreen {
+    align: center middle;
+    background: $background 60%;
+}
+
+#game-over-dialog {
+    width: auto;
+    min-width: 34;
+    height: auto;
+    padding: 1 4;
+    border: thick $accent;
+    background: $surface;
+    align: center middle;
+}
+
+#game-over-title {
+    width: 100%;
+    content-align: center middle;
+    text-align: center;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#game-over-message {
+    width: 100%;
+    content-align: center middle;
+    text-align: center;
+    margin-bottom: 1;
+}
+
+#game-over-buttons {
+    width: auto;
+    height: auto;
+    align: center middle;
+}
+
+#game-over-buttons Button {
+    margin: 0 1;
+}
+
+/* The whole game is one relative block: it fills the terminal (up to a max
+   width so tiles don't stretch absurdly on very wide screens) and centers.
+   Its children divide that space with fractional units, so the board and
+   keyboard resize together with the terminal. */
+#game {
+    width: 100%;
+    height: auto;
+    align: center middle;
+}
+
+#header-bar {
+    width: 100%;
+    height: auto;
+    align: center middle;
+}
+
+#game-header {
+    width: auto;
+    height: auto;
+    border: round $accent;
+    padding: 0 2;
+    margin: 0 0 1 0;
+    content-align: center middle;
+    text-align: center;
+    text-style: bold;
+}
+
+/* The board is content-sized; tile dimensions are set each resize by
+   _resize_board (kept square). These are just the initial values. */
+#guess_screen {
+    width: 100%;
+    height: auto;
+    align: center middle;
+}
+
+.guess-row {
+    width: 100%;
+    height: auto;
+    align: center middle;
+    margin-bottom: 1;
+}
+
+.cell {
+    width: 6;
+    height: 3;
+    border: heavy $accent;
+    content-align: center middle;
+    text-align: center;
+    margin: 0 1;
+}
+
+#input-bar {
+    width: 100%;
+    height: auto;
+    align: center middle;
+}
+
+#current-word {
+    height: 3;
+    width: auto;
+    min-width: 16;
+    border: solid $accent;
+    content-align: center middle;
+    text-align: center;
+    padding: 0 1;
+    margin: 1 0 0 0;
+}
+
+/* Readable keyboard. Key width is set by _resize_board so the keyboard
+   spans about the board width; height stays fixed and legible. */
+#keyboard {
+    width: 100%;
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+}
+
+.key-row {
+    width: 100%;
+    height: auto;
+    align: center middle;
+}
+
+.key {
+    width: 5;
+    min-width: 3;
+    height: 3;
+    /* Horizontal gaps only. Vertical margins here cost 2 rows per keyboard
+       row (top+bottom) = 6 rows of dead space that pushed the bottom row
+       off screen; rows sit flush instead. */
+    margin: 0 1;
+    background: #565a63;
+    color: white;
+}
+
+.wide {
+    width: 8;
+}
+
+.match {
+    background: #538d4e;   /* in the word, correct spot */
+    color: white;
+}
+
+.present {
+    background: #b59f3b;   /* in the word, wrong spot */
+    color: white;
+}
+
+.absent {
+    background: #3a3a3c;   /* used, not in the word */
+    color: #8a8d94;
+}
+
+/* On a scored cell, match the border to the fill so the tile reads as one
+   solid block instead of the fill bleeding around the accent border. */
+.cell.match {
+    border: heavy #538d4e;
+}
+
+.cell.present {
+    border: heavy #b59f3b;
+}
+
+.cell.absent {
+    border: heavy #3a3a3c;
+}
